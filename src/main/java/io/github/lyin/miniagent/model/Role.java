@@ -12,8 +12,8 @@ private final String wire;
 
 //这个是构造器，让上面的enum有返回的地方，有了这句才有上面enum的角色定义字段。（默认私有不用private）
     Role(String wire){
-        this.wire=wire;      //特意用this指针，把传进来的字符存一下，存成字段
-    }
+        this.wire=wire;
+    }      //特意用this指针，把传进来的字符存一下，存成字段
 
 //定义对外可读取的方法
     public String wire(){
