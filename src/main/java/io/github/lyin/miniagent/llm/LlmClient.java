@@ -24,5 +24,8 @@ public interface LlmClient {
      * @param messages 完整对话历史（按序包含 system / user / assistant / tool 各角色消息）
      * @return 模型响应：要么是最终文本答案（content），要么是一个工具调用（toolCall）
      */
+
+
+
     ChatCompletionResponse chat(List<Message> messages);
 }

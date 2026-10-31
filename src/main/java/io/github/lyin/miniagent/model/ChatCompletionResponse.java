@@ -13,13 +13,15 @@ public class ChatCompletionResponse {
         this.toolCall = toolCall;
     }
 
-    /** 最终答案：content 有值，toolCall 为 null。 */
+    /** 最终答案：content 有值，toolCall 为 null。 调用文本信息，不调用工具*/
     public static ChatCompletionResponse answer(String content) {
+
         return new ChatCompletionResponse(content, null);
     }
 
-    /** 工具调用：toolCall 有值，content 为 null。 */
+    /** 工具调用：toolCall 有值，content 为 null。 走工具，不走文本信息*/
     public static ChatCompletionResponse toolCall(FunctionCall toolCall) {
+
         return new ChatCompletionResponse(null, toolCall);
     }
 
