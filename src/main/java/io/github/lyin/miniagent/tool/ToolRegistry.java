@@ -25,7 +25,7 @@ public class ToolRegistry {
      * @param tool 要注册的工具实例
      */
     public void register(Tool tool) {
-        // ===================== 🔴【你手写区域开始】=====================
+
         // 步骤1：拿到工具名称 tool.name()
         String name = tool.name();
         // 步骤2：校验①：判断name是否为null、空白、包含空格，不满足则抛IllegalArgumentException
@@ -50,7 +50,7 @@ public class ToolRegistry {
 
         // 步骤6：上面所有校验全部通过之后，才执行 put存入map
     tools.put(name,tool);
-    // ===================== 🔴【你手写区域结束】=====================
+
     }
 
     /**
@@ -59,7 +59,6 @@ public class ToolRegistry {
      * @return 匹配的Tool
      */
     public Tool get(String name) {
-        // ===================== 🔴【你手写区域开始】=====================
         // 1. 根据name从tools中get拿到tool对象
         Tool tool = tools.get(name);
         // 2. 如果拿到是null，抛出异常：工具不存在
@@ -68,10 +67,9 @@ public class ToolRegistry {
         }
         // 3. 存在就return返回tool
         return tool;
-        // ===================== 🔴【你手写区域结束】=====================
     }
 
-    // 🟢【可选拓展骨架，现在不用写，后面测试的时候再用】
+    // 🟢【这个是可选拓展骨架，，后面测试的时候再用】
     // public Collection<Tool> getAllTools() {
     //     return tools.values();
     // }

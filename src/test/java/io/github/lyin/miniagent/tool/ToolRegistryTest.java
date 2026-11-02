@@ -25,7 +25,9 @@ class ToolRegistryTest {
 
     @Test
     void 注册同名工具_应该抛异常() {
+        //new一个toolregister工具
         ToolRegistry registry = new ToolRegistry();
+        //
         JsonSchema schema = JsonSchema.builder().build();
 
         registry.register(new FakeTool("query_order", schema));
