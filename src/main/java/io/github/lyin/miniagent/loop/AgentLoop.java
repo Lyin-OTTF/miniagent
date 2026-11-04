@@ -5,6 +5,7 @@ import io.github.lyin.miniagent.model.ChatCompletionResponse;
 import io.github.lyin.miniagent.model.FunctionCall;
 import io.github.lyin.miniagent.model.Message;
 import io.github.lyin.miniagent.model.Role;
+import io.github.lyin.miniagent.tool.SchemaValidator;
 import io.github.lyin.miniagent.tool.Tool;
 import io.github.lyin.miniagent.tool.ToolRegistry;
 import io.github.lyin.miniagent.tool.ToolResult;
@@ -15,11 +16,13 @@ public class AgentLoop {
     private final LlmClient llmClient;
     private final ToolRegistry registry;
     private final TerminationPolicy terminationPolicy;
+    private final SchemaValidator schemaValidator;
 
-    public AgentLoop(LlmClient llmClient, ToolRegistry registry, TerminationPolicy terminationPolicy) {
+    public AgentLoop(LlmClient llmClient, ToolRegistry registry, TerminationPolicy terminationPolicy,SchemaValidator schemaValidator) {
         this.llmClient = llmClient;
         this.registry = registry;
         this.terminationPolicy = terminationPolicy;
+        this.schemaValidator = schemaValidator;
     }
 
     /**
@@ -55,8 +58,9 @@ public class AgentLoop {
             //模型要调工具
             FunctionCall fc = response.getToolCall();
             Tool tool = this.registry.get(fc.getName());
-            ToolResult result = tool.call(Map.of());   // 参数解析是阶段4，现在先传空Map
-
+            //调用写过的这个方法，转json，顺带校验一下格式，argument是存着的大模型json参数
+            Map<String, Object> args = this.schemaValidator.validate(fc.getArguments(), tool.schema());
+            ToolResult result = tool.call(args);
             //把工具结果作为 tool 消息追加到历史
             state.appendMessage(new Message(Role.TOOL, result.getText(), null));
 

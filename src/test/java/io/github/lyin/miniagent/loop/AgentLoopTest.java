@@ -4,6 +4,7 @@ import io.github.lyin.miniagent.llm.LlmClient;
 import io.github.lyin.miniagent.llm.mock.MockLlmClient;
 import io.github.lyin.miniagent.model.ChatCompletionResponse;
 import io.github.lyin.miniagent.model.FunctionCall;
+import io.github.lyin.miniagent.tool.SchemaValidator;
 import io.github.lyin.miniagent.tool.Tool;
 import io.github.lyin.miniagent.tool.ToolRegistry;
 import io.github.lyin.miniagent.tool.ToolResult;
@@ -47,7 +48,7 @@ class AgentLoopTest {
         TerminationPolicy policy = new TerminationPolicy(5, 3);
 
         //跑
-        AgentLoop loop = new AgentLoop(llm, registry, policy);
+        AgentLoop loop = new AgentLoop(llm, registry, policy,new SchemaValidator());
         AgentState state = loop.run("帮我查订单");
 
         //断言，断言是什么意思？
@@ -68,7 +69,7 @@ class AgentLoopTest {
         registry.register(new FakeTool());
 
         // 🔴 你写：跑 run()，断言 stopReason == "max_turns"
-        AgentLoop loop = new AgentLoop(llm,registry,policy);
+        AgentLoop loop = new AgentLoop(llm,registry,policy,new SchemaValidator());
         AgentState state = loop.run("帮我查订单");
         assertEquals("max_turns", state.getStopReason());
     }
@@ -86,7 +87,7 @@ class AgentLoopTest {
         registry.register(new FakeTool());
 
         // 🔴 你写：跑 run()，断言 stopReason == "loop_detected"
-        AgentLoop loop = new AgentLoop(llm,registry,policy);
+        AgentLoop loop = new AgentLoop(llm,registry,policy,new SchemaValidator());
         AgentState state = loop.run("帮我查订单");
         assertEquals("loop_detected", state.getStopReason());
     }
