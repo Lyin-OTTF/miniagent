@@ -3,6 +3,7 @@ package io.github.lyin.miniagent.checkpoint;
 import io.github.lyin.miniagent.loop.AgentState;
 import io.github.lyin.miniagent.model.Message;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Checkpoint {
@@ -15,7 +16,7 @@ public class Checkpoint {
     private final List<Message> messages;
     private final int turn;
     private final String stopReason;
-    private final SideEffectLedger ledger;
+    private  SideEffectLedger ledger;
 
     // 🔴 构造器：接收 4 个参数，全 final
     public Checkpoint(List<Message> messages, int turn, String stopReason, SideEffectLedger ledger) {
@@ -28,7 +29,7 @@ public class Checkpoint {
     // 🔴 静态工厂：from(AgentState state, SideEffectLedger ledger)
     //    从 AgentState 里取 messages、turn、stopReason
     public static Checkpoint from(AgentState state, SideEffectLedger ledger) {
-        return new Checkpoint(state.getMessages(), state.getTurn(), state.getStopReason(), ledger);
+        return new Checkpoint(new ArrayList<>(state.getMessages()), state.getTurn(), state.getStopReason(), ledger.copy());
     }
 
     // 🔴 getter：getMessages(), getTurn(), getStopReason(), getLedger()

@@ -24,6 +24,9 @@ public class AgentState {
     public void nextTurn() {
         turn++;
     }
+    public void setTurn(int turn) {
+        this.turn = turn;
+    }
 
     //标记停止的方法
     public void stop(String reason) {
@@ -33,4 +36,16 @@ public class AgentState {
     public List<Message> getMessages(){return messages;}
     public int getTurn(){return turn;}
     public String getStopReason(){return stopReason;}
+
+    public static AgentState restore(List<Message> messages, int turn) {
+        // 新建一个 AgentState
+        // 把 messages 全部加进去
+        // 设置 turn
+        AgentState state = new AgentState();
+        for (Message msg : messages) {
+            state.appendMessage(msg);
+        }
+        state.setTurn(turn);
+        return state;
+    }
 }

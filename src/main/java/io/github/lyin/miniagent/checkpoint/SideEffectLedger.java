@@ -8,7 +8,7 @@ import java.util.Map;
 public class SideEffectLedger {
 
     // 账本：幂等键 → 工具执行结果
-    private final Map<String, ToolResult> entries = new HashMap<>();
+    private Map<String, ToolResult> entries = new HashMap<>();
 
     /**
      * 查账本：这个幂等键之前执行过吗？
@@ -28,5 +28,14 @@ public class SideEffectLedger {
     public void record(String idempotencyKey, ToolResult result) {
         // 🔴 entries.put(idempotencyKey, result)
         entries.put(idempotencyKey, result);
+    }
+
+    public SideEffectLedger copy() {
+        // 新建一个 SideEffectLedger
+        SideEffectLedger copy = new SideEffectLedger();
+        // 把 entries 这个 Map 的内容全部复制过去
+        copy.entries = new HashMap<>(entries);
+        // 提示：new HashMap<>(entries) 可以复制 Map
+        return copy;
     }
 }
