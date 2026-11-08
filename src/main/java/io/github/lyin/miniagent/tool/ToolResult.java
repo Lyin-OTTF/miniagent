@@ -22,6 +22,7 @@ public class ToolResult {
         return new ToolResult(text,false);
     }
 
+
     //getter写法，注意返回值
     public boolean isSuccess(){
             return success;

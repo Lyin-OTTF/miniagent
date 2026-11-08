@@ -36,6 +36,28 @@ public class SchemaValidator {
              }
          }
 
+        // 遍历 args 的 key，如果不在 schema.getProperties() 里，就报错
+        for (String key : args.keySet()) {
+            if (!schema.getProperties().containsKey(key)) {
+                throw new IllegalArgumentException("未知参数: " + key);
+            }
+        }
+
+        // 先简单实现：只处理 String → Integer 的情况
+        for (String key : args.keySet()) {
+            Object value = args.get(key);
+            Map<String, Object> fieldSchema = schema.getProperties().get(key);
+            String type = (String) fieldSchema.get("type");
+            if (value instanceof String && "integer".equals(type)) {
+                try {
+                    args.put(key, Integer.parseInt((String) value));
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("参数 " + key + " 不是整数: " + value);
+                }
+            }
+        }
+
+
         //返回解析好的 Map
         return args;
     }
