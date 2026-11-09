@@ -7,6 +7,7 @@ import io.github.lyin.miniagent.llm.LlmClient;
 import io.github.lyin.miniagent.loop.AgentLoop;
 import io.github.lyin.miniagent.loop.AgentState;
 import io.github.lyin.miniagent.loop.TerminationPolicy;
+import io.github.lyin.miniagent.tool.JsonSchema;
 import io.github.lyin.miniagent.tool.SchemaValidator;
 import io.github.lyin.miniagent.tool.Tool;
 import io.github.lyin.miniagent.tool.ToolRegistry;
@@ -28,6 +29,8 @@ public class Agent {
     private final SchemaValidator schemaValidator;
     private final SideEffectLedger ledger;
     private final HitlGate hitlGate;
+    private JsonSchema expectedSchema = null;
+    private int outputMaxRetries = 0;
 
     /**
      * 默认装配：轮次上限 10、连续重复 5 次判定死循环、HITL 全放行。
@@ -56,6 +59,17 @@ public class Agent {
     }
 
     /**
+     * 配置最终答案的结构化输出校验。
+     *
+     * @param expectedSchema 期望的 JSON 结构
+     * @param maxRetries      校验失败后最多重试次数
+     */
+    public void setExpectedOutput(JsonSchema expectedSchema, int maxRetries) {
+        this.expectedSchema = expectedSchema;
+        this.outputMaxRetries = maxRetries;
+    }
+
+    /**
      * 从头跑一次对话。
      */
     public AgentState run(String userInput) {
@@ -74,6 +88,6 @@ public class Agent {
 
     private AgentLoop newLoop() {
         return new AgentLoop(llmClient, registry, terminationPolicy, schemaValidator,
-                ledger, hitlGate, checkpointStore, sessionId);
+                ledger, hitlGate, checkpointStore, sessionId, expectedSchema, outputMaxRetries);
     }
 }

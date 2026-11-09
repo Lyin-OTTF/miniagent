@@ -10,6 +10,8 @@ import io.github.lyin.miniagent.model.ChatCompletionResponse;
 import io.github.lyin.miniagent.model.FunctionCall;
 import io.github.lyin.miniagent.model.Message;
 import io.github.lyin.miniagent.model.Role;
+import io.github.lyin.miniagent.output.StructuredOutputValidator;
+import io.github.lyin.miniagent.tool.JsonSchema;
 import io.github.lyin.miniagent.tool.SchemaValidator;
 import io.github.lyin.miniagent.tool.Tool;
 import io.github.lyin.miniagent.tool.ToolRegistry;
@@ -20,6 +22,8 @@ import java.util.Map;
 
 public class AgentLoop {
 
+    public static final String REASON_OUTPUT_INVALID = "output_invalid";
+
     private final LlmClient llmClient;
     private final ToolRegistry registry;
     private final TerminationPolicy terminationPolicy;
@@ -28,11 +32,24 @@ public class AgentLoop {
     private final CheckpointStore checkpointStore;
     private final String sessionId;
 
+    private final JsonSchema expectedSchema;
+    private final int maxRetries;
+    private final StructuredOutputValidator outputValidator = new StructuredOutputValidator();
+
     private SideEffectLedger ledger;
+    private int outputRetryCount = 0;
 
     public AgentLoop(LlmClient llmClient, ToolRegistry registry, TerminationPolicy terminationPolicy,
                      SchemaValidator schemaValidator, SideEffectLedger ledger, HitlGate hitlGate,
                      CheckpointStore checkpointStore, String sessionId) {
+        this(llmClient, registry, terminationPolicy, schemaValidator, ledger, hitlGate,
+                checkpointStore, sessionId, null, 0);
+    }
+
+    public AgentLoop(LlmClient llmClient, ToolRegistry registry, TerminationPolicy terminationPolicy,
+                     SchemaValidator schemaValidator, SideEffectLedger ledger, HitlGate hitlGate,
+                     CheckpointStore checkpointStore, String sessionId,
+                     JsonSchema expectedSchema, int maxRetries) {
         this.llmClient = llmClient;
         this.registry = registry;
         this.terminationPolicy = terminationPolicy;
@@ -41,6 +58,8 @@ public class AgentLoop {
         this.hitlGate = hitlGate;
         this.checkpointStore = checkpointStore;
         this.sessionId = sessionId;
+        this.expectedSchema = expectedSchema;
+        this.maxRetries = maxRetries;
     }
 
     public AgentState run(String userInput) {
@@ -74,6 +93,29 @@ public class AgentLoop {
             state.appendMessage(assistantMsg);
 
             String stopReason = terminationPolicy.check(state, response);
+
+            if (stopReason != null && stopReason.equals(TerminationPolicy.REASON_FINISHED)) {
+                if (expectedSchema != null) {
+                    StructuredOutputValidator.OutputResult result =
+                            outputValidator.validate(response.getContent(), expectedSchema);
+                    if (result.isSuccess()) {
+                        state.stop(TerminationPolicy.REASON_FINISHED);
+                        break;
+                    }
+                    if (outputRetryCount >= maxRetries) {
+                        state.stop(REASON_OUTPUT_INVALID);
+                        break;
+                    }
+                    outputRetryCount++;
+                    state.appendMessage(new Message(Role.USER,
+                            "你输出的内容不是合法的 JSON：" + result.getError()
+                                    + "。请重新输出，只输出符合要求的 JSON，不要有其他解释。",
+                            null));
+                    state.nextTurn();
+                    continue;
+                }
+            }
+
             if (stopReason != null) {
                 state.stop(stopReason);
                 break;
