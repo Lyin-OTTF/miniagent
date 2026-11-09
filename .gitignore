@@ -4,3 +4,10 @@ target/
 .idea/
 .vscode/
 *.log
+
+# 内部教学材料（作业单、交接文档、流程图）一律不入库：
+# docs 只放对外工程文档，学习/方案类材料放在 D:/code study/miniagent-内部资料/
+/作业单*.md
+/HANDOVER_*.md
+/*-代码流程*.html
+/阶段规划*.md
