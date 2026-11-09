@@ -23,10 +23,23 @@ import static io.github.lyin.miniagent.model.ChatCompletionResponse.answer;
 import static io.github.lyin.miniagent.model.ChatCompletionResponse.toolCall;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * 续跑语义的端到端验证：中断恢复后，已执行过的写工具不得重复执行。
+ *
+ * <p>这是整个项目最关键的一条断言。它之所以成立，依赖两个前提，缺一不可：</p>
+ * <ol>
+ *   <li>崩溃必须发生在 {@code delegate.chat} <b>之前</b>，这样剧本里"第二次 deduct"
+ *       那段没有被消费，续跑时才会再次出现同一个写工具调用；</li>
+ *   <li>同一工具 + 同一参数的幂等键必须稳定，账本才能命中。</li>
+ * </ol>
+ * <p>前提 1 由 {@code assertEquals(2, mockLlm.getTurn())} 显式锁定——若哪天崩溃点被挪到
+ * 消费剧本之后，这条断言会先失败，而不是让测试静默失去证明力。</p>
+ */
 public class ResumeTest {
 
-    // 崩溃装饰器：第 N 次 chat 抛异常，模拟进程崩溃
+    /** 崩溃装饰器：第 N 次 chat 抛异常，模拟进程崩溃（先抛后取，剧本不会被消费）。 */
     static class CrashingLlmClient implements LlmClient {
+
         private final LlmClient delegate;
         private final int failAtCall;
         private int calls = 0;
@@ -47,87 +60,68 @@ public class ResumeTest {
 
     @Test
     void 中断后续跑_写工具不重复执行() {
-        // 1. 计数器
         AtomicInteger queryCount = new AtomicInteger(0);
         AtomicInteger deductCount = new AtomicInteger(0);
         AtomicInteger notifyCount = new AtomicInteger(0);
 
         JsonSchema emptySchema = JsonSchema.builder().build();
 
-        // 2. 三个工具
-        Tool queryTool = new Tool() {
-            @Override public String name() { return "query_order"; }
-            @Override public String description() { return "查询订单"; }
-            @Override public JsonSchema schema() { return emptySchema; }
-            @Override public ToolResult call(Map<String, Object> args) {
-                queryCount.incrementAndGet();
-                return ToolResult.success("订单已查询");
-            }
-        };
-        Tool deductTool = new Tool() {
-            @Override public String name() { return "deduct_stock"; }
-            @Override public String description() { return "扣减库存"; }
-            @Override public JsonSchema schema() { return emptySchema; }
-            @Override public ToolResult call(Map<String, Object> args) {
-                deductCount.incrementAndGet();
-                return ToolResult.success("库存已扣减");
-            }
-        };
-        Tool notifyTool = new Tool() {
-            @Override public String name() { return "notify"; }
-            @Override public String description() { return "通知"; }
-            @Override public JsonSchema schema() { return emptySchema; }
-            @Override public ToolResult call(Map<String, Object> args) {
-                notifyCount.incrementAndGet();
-                return ToolResult.success("通知已发送");
-            }
-        };
+        Tool queryTool = countingTool("query_order", "查询订单", emptySchema, queryCount, "订单已查询");
+        Tool deductTool = countingTool("deduct_stock", "扣减库存", emptySchema, deductCount, "库存已扣减");
+        Tool notifyTool = countingTool("notify", "通知", emptySchema, notifyCount, "通知已发送");
 
-        // 3. 注册工具
         ToolRegistry registry = new ToolRegistry();
         registry.register(queryTool);
         registry.register(deductTool);
         registry.register(notifyTool);
 
-        // 4. Mock 剧本：query → deduct → notify → 回答
+        // 剧本：[0]query [1]deduct [2]deduct(续跑时重现) [3]notify [4]answer
         List<ChatCompletionResponse> script = List.of(
                 toolCall(new FunctionCall("query_order", "{}")),
                 toolCall(new FunctionCall("deduct_stock", "{}")),
-                toolCall(new FunctionCall("deduct_stock", "{}")),   // 第二次 deduct
+                toolCall(new FunctionCall("deduct_stock", "{}")),
+                toolCall(new FunctionCall("notify", "{}")),
                 answer("完成")
         );
         MockLlmClient mockLlm = new MockLlmClient(script);
-
-        // 5. 崩溃客户端：第 3 次 chat 抛异常（第 3 次就是 notify 那次）
         LlmClient crashingLlm = new CrashingLlmClient(mockLlm, 3);
 
-        // 6. 造 AgentLoop（8 个参数）
-        TerminationPolicy policy = new TerminationPolicy(10, 5);
         CheckpointStore store = new CheckpointStore();
         AgentLoop loop = new AgentLoop(
-                crashingLlm, registry, policy,
+                crashingLlm, registry, new TerminationPolicy(10, 5),
                 new SchemaValidator(), new SideEffectLedger(), new HitlGate(),
                 store, "test-session"
         );
 
-        // 7. 跑 run()，预期第 3 次 chat 崩溃
+        // 第 3 次 chat 崩溃：query、deduct 已执行并记账，剧本只消费到 [1]
         try {
             loop.run("帮我处理订单");
         } catch (RuntimeException e) {
             // 预期崩溃
         }
 
-        // 8. 崩溃时：query 和 deduct 已经执行，notify 还没执行
-        assertEquals(1, queryCount.get());
-        assertEquals(1, deductCount.get());
+        assertEquals(1, queryCount.get(), "崩溃前 query 应执行一次");
+        assertEquals(1, deductCount.get(), "崩溃前 deduct 应执行一次");
+        assertEquals(2, mockLlm.getTurn(), "前提：崩溃发生在取剧本之前，[2]deduct 尚未被消费");
 
-
-        // 9. resume() 接着跑（用同一个 mockLlm，剧本还在继续）
+        // 续跑：模型重新请求 deduct，账本命中 → 跳过执行；随后 notify 正常执行
         AgentState resumed = loop.resume("test-session");
 
-        // 10. 关键断言：deduct 没重复执行，notify 执行了一次
-        assertEquals(1, deductCount.get());  // 关键！账本拦住了
-        assertEquals("finished", resumed.getStopReason());
+        assertEquals(1, deductCount.get(), "关键：账本拦住了重放，deduct 仍只执行一次");
+        assertEquals(1, notifyCount.get(), "续跑中未执行过的工具应正常执行");
+        assertEquals(TerminationPolicy.REASON_FINISHED, resumed.getStopReason());
+    }
 
+    private static Tool countingTool(String name, String description, JsonSchema schema,
+                                     AtomicInteger counter, String resultText) {
+        return new Tool() {
+            @Override public String name() { return name; }
+            @Override public String description() { return description; }
+            @Override public JsonSchema schema() { return schema; }
+            @Override public ToolResult call(Map<String, Object> args) {
+                counter.incrementAndGet();
+                return ToolResult.success(resultText);
+            }
+        };
     }
 }

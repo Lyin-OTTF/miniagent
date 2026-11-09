@@ -17,17 +17,32 @@ import io.github.lyin.miniagent.tool.ToolResult;
 
 import java.util.Map;
 
+/**
+ * ReAct 循环：问模型 → 判断是否终止 → 执行工具 → 存快照，直到终止条件命中。
+ *
+ * <p>「从头跑」与「续跑」共用同一个 {@link #loop(AgentState)}：续跑不是另一套逻辑，
+ * 只是以快照恢复出的状态作为起点进入同一个循环。这正是 checkpoint 执行模型的本质。</p>
+ *
+ * <p>副作用安全依赖 {@link SideEffectLedger}：工具执行前先按幂等键查账本，
+ * 命中即回填历史结果、跳过执行，使续跑不会重复扣款或重复扣库存。
+ * 语义边界见 {@link SideEffectLedger} 的类注释（at-least-once）。</p>
+ */
 public class AgentLoop {
+
     private final LlmClient llmClient;
     private final ToolRegistry registry;
     private final TerminationPolicy terminationPolicy;
     private final SchemaValidator schemaValidator;
-    private SideEffectLedger ledger;
     private final HitlGate hitlGate;
     private final CheckpointStore checkpointStore;
     private final String sessionId;
 
-    public AgentLoop(LlmClient llmClient, ToolRegistry registry, TerminationPolicy terminationPolicy, SchemaValidator schemaValidator, SideEffectLedger ledger, HitlGate hitlGate, CheckpointStore checkpointStore, String sessionId) {
+    /** 续跑时会被快照里的账本整体替换，故不能是 final。 */
+    private SideEffectLedger ledger;
+
+    public AgentLoop(LlmClient llmClient, ToolRegistry registry, TerminationPolicy terminationPolicy,
+                     SchemaValidator schemaValidator, SideEffectLedger ledger, HitlGate hitlGate,
+                     CheckpointStore checkpointStore, String sessionId) {
         this.llmClient = llmClient;
         this.registry = registry;
         this.terminationPolicy = terminationPolicy;
@@ -39,7 +54,7 @@ public class AgentLoop {
     }
 
     /**
-     * 跑一轮 Agent（从头开始）
+     * 从头开始一次对话。
      */
     public AgentState run(String userInput) {
         AgentState state = new AgentState();
@@ -48,61 +63,67 @@ public class AgentLoop {
     }
 
     /**
-     * 从快照恢复，接着跑
+     * 从快照恢复并继续执行。
+     *
+     * <p>不重复 append 用户消息：用户输入已在崩溃前的快照里，
+     * 再追加一次会让模型看到两遍同一个请求。</p>
+     *
+     * @throws IllegalStateException    该会话没有快照
+     * @throws IllegalArgumentException 传入的会话与当前 loop 绑定的会话不一致
      */
     public AgentState resume(String sessionId) {
-        Checkpoint cp = checkpointStore.load(sessionId);
-        if (cp == null) throw new IllegalStateException("无快照: " + sessionId);
-        AgentState state = AgentState.restore(cp.getMessages(), cp.getTurn());
-        this.ledger = cp.getLedger();
+        if (!this.sessionId.equals(sessionId)) {
+            // 快照按入参加载、却按 this.sessionId 保存，不一致会把恢复后的进度写进另一个会话
+            throw new IllegalArgumentException(
+                    "会话不匹配: loop=" + this.sessionId + ", resume=" + sessionId);
+        }
+        Checkpoint checkpoint = checkpointStore.load(sessionId);
+        if (checkpoint == null) {
+            throw new IllegalStateException("无快照: " + sessionId);
+        }
+        AgentState state = AgentState.restore(checkpoint.getMessages(), checkpoint.getTurn());
+        this.ledger = checkpoint.getLedger();
         return loop(state);
     }
 
     /**
-     * 循环体（run 和 resume 共用）
+     * 循环体，run 与 resume 共用。
      */
     private AgentState loop(AgentState state) {
         while (true) {
-            //问模型
-            ChatCompletionResponse response = this.llmClient.chat(state.getMessages());
+            ChatCompletionResponse response = llmClient.chat(state.getMessages());
 
-            Message assistantMsg;
-            if (response.hasToolCall()) {
-                assistantMsg = new Message(Role.ASSISTANT, null, response.getToolCall());
-            } else {
-                assistantMsg = new Message(Role.ASSISTANT, response.getContent(), null);
-            }
+            Message assistantMsg = response.hasToolCall()
+                    ? new Message(Role.ASSISTANT, null, response.getToolCall())
+                    : new Message(Role.ASSISTANT, response.getContent(), null);
             state.appendMessage(assistantMsg);
 
-            //判断该不该停
-            String stopReason = this.terminationPolicy.check(state, response);
+            String stopReason = terminationPolicy.check(state, response);
             if (stopReason != null) {
                 state.stop(stopReason);
                 break;
             }
 
-            //模型要调工具
-            FunctionCall fc = response.getToolCall();
-            Tool tool = this.registry.get(fc.getName());
-            Map<String, Object> args = this.schemaValidator.validate(fc.getArguments(), tool.schema());
-            String key = IdempotencyKey.of(tool.name(), args);
-            ToolResult result = this.ledger.lookup(key);
+            FunctionCall functionCall = response.getToolCall();
+            Tool tool = registry.get(functionCall.getName());
+            Map<String, Object> args = schemaValidator.validate(functionCall.getArguments(), tool.schema());
+
+            String idempotencyKey = IdempotencyKey.of(tool.name(), args);
+            ToolResult result = ledger.lookup(idempotencyKey);
             if (result == null) {
-                if (this.hitlGate.approve(tool, args)) {
+                if (hitlGate.approve(tool, args)) {
                     result = tool.call(args);
-                    this.ledger.record(key, result);
+                    ledger.record(idempotencyKey, result);
                 } else {
+                    // 被拒绝不记账：人工拒绝不是「已完成」，下次仍应重新征求审批
                     result = ToolResult.failure("用户拒绝执行: " + tool.name());
                 }
             }
             state.appendMessage(new Message(Role.TOOL, result.getText(), null));
 
-            //轮次 +1
             state.nextTurn();
 
-            //存快照
-            Checkpoint checkpoint = Checkpoint.from(state, this.ledger);
-            this.checkpointStore.save(this.sessionId, checkpoint);
+            checkpointStore.save(sessionId, Checkpoint.from(state, ledger));
         }
         return state;
     }

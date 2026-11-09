@@ -5,42 +5,37 @@ import io.github.lyin.miniagent.tool.SchemaValidator;
 
 import java.util.Map;
 
+/**
+ * 最终答案的结构化输出校验器。
+ *
+ * <p>与工具参数校验的关键差异在于失败语义：参数非法必须抛异常打断调用链，
+ * 而答案结构不合规是「模型没按约定输出」，属于可恢复状态——
+ * 上层通常选择重试或降级，而不是让整个会话崩掉。因此这里吞掉异常并返回失败结果对象。</p>
+ */
 public class StructuredOutputValidator {
-    // 复用阶段 4 写好的 SchemaValidator
+
+    /** 复用工具参数校验的同一套 Schema 规则，避免两份实现漂移。 */
     private final SchemaValidator schemaValidator = new SchemaValidator();
 
     /**
      * 校验模型最终输出的 JSON 是否满足期望结构。
-     * 和参数校验不同：失败不抛异常，而是返回一个「校验结果」对象，
-     * 让上层决定是重试还是降级。
+     *
+     * @param content        模型输出的原始文本，应为 JSON 对象
+     * @param expectedSchema 期望的结构
+     * @return 成功携带解析后的 Map，失败携带错误信息，不抛异常
      */
     public OutputResult validate(String content, JsonSchema expectedSchema) {
-        // schemaValidator.validate(content, expectedSchema)
-        //    包在 try-catch 里，失败不抛异常，返回失败结果
-        try{
-            Map<String, Object> validate = schemaValidator.validate(content, expectedSchema);
-            return OutputResult.ok(validate);
-        } catch (Exception e) {
+        try {
+            Map<String, Object> data = schemaValidator.validate(content, expectedSchema);
+            return OutputResult.ok(data);
+        } catch (RuntimeException e) {
             return OutputResult.fail(e.getMessage());
         }
-
-        // 🔴 第 2 步：成功返回 OutputResult.ok(map)
-        //    失败返回 OutputResult.fail("错误信息")
-        /*
-        if () {
-            return OutputResult.ok(validate);
-        }
-        else{
-            throw new RuntimeException(OutputResult.fail("错误信息").toString());
-        }
-
-        return null; // 先留空
-        */
     }
 
-    // 内部类：校验结果（成功/失败 + 数据）
+    /** 校验结果：成功/失败 + 解析数据 + 错误信息。 */
     public static class OutputResult {
-        // 🔴 成员变量：boolean success, Map<String,Object> data, String error
+
         private final boolean success;
         private final Map<String, Object> data;
         private final String error;
@@ -51,20 +46,22 @@ public class StructuredOutputValidator {
             this.error = error;
         }
 
-        // 🔴 静态工厂：ok(Map) / fail(String)
         public static OutputResult ok(Map<String, Object> data) {
             return new OutputResult(true, data, null);
         }
+
         public static OutputResult fail(String error) {
             return new OutputResult(false, null, error);
         }
-        // 🔴 getter：isSuccess(), getData(), getError()
+
         public boolean isSuccess() {
             return success;
         }
+
         public Map<String, Object> getData() {
             return data;
         }
+
         public String getError() {
             return error;
         }
