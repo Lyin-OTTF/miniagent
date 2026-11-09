@@ -11,3 +11,6 @@ target/
 /HANDOVER_*.md
 /*-代码流程*.html
 /阶段规划*.md
+
+# 临时类路径文件
+cp.txt

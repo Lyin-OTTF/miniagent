@@ -60,8 +60,9 @@ src/main/java/io/github/lyin/miniagent/
 ├── loop/        # AgentLoop、AgentState、TerminationPolicy
 ├── output/      # 结构化输出校验
 ├── checkpoint/  # Checkpoint、快照存储、副作用账本、幂等键、HITL 闸门
-├── Agent.java   # 门面
-└── Main.java    # 演示入口（Mock，不联网）
+├── Agent.java       # 门面
+├── Main.java        # 演示入口（Mock 剧本，不联网）
+└── RealApiDemo.java # 真实模型联调入口（需 Key，联网）
 ```
 
 ## 构建与运行
@@ -84,3 +85,36 @@ mvn test      # 全部测试
     终止原因: finished
     续跑后累计执行次数: query_order=1, deduct_stock=1, notify=1
 ```
+
+## 对接真实模型
+
+`RealApiDemo` 把 `LlmClient` 换成真实实现跑一轮工具调用。Mock 只能证明循环与账本逻辑正确，
+证明不了「上游会接受我们发出的请求体」——协议字段是否合规只能由真实服务裁决。
+
+```bash
+export DEEPSEEK_API_KEY=sk-xxxx          # 必需，不接受命令行参数，避免落进 shell 历史
+export DEEPSEEK_BASE_URL=...             # 可选，默认 https://api.deepseek.com
+export DEEPSEEK_MODEL=...                # 可选，默认 deepseek-chat
+
+mvn -q compile dependency:build-classpath -Dmdep.outputFile=cp.txt
+java -Dstdout.encoding=UTF-8 -cp "target/classes:$(cat cp.txt)" io.github.lyin.miniagent.RealApiDemo
+```
+
+Windows 下类路径分隔符是 `;` 而非 `:`，也可以直接在 IDE 里运行该 main 方法。
+`-Dstdout.encoding=UTF-8` 是为了让 Windows 控制台不把中文打成乱码。
+
+实测输出（DeepSeek `deepseek-chat`）：
+
+```text
+终止原因: finished
+工具实际执行次数: query_order=1
+消息历史:
+  [user] 请查询订单 A1001 的状态。必须先调用 query_order 工具，再根据工具结果回答。
+  [assistant] [请求工具 query_order 参数={"orderId": "A1001"} id=call_00_PgYCVsKdT4U40PAeL9TN9494]
+  [tool] 订单 A1001 状态：已发货，承运商：顺丰，运单号 SF1234567890
+  [assistant] 订单 A1001 的查询结果如下：- **状态**：已发货 ...
+```
+
+这一轮的第二个请求必然携带 `assistant.tool_calls`（含上游返回的 `id`）与 `tool.tool_call_id`，
+上游正常返回即说明多轮工具调用的协议字段是被真实服务校验通过的，不只是本地桩认为合规。
+
