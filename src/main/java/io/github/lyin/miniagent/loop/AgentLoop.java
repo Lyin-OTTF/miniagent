@@ -99,6 +99,7 @@ public class AgentLoop {
                     StructuredOutputValidator.OutputResult result =
                             outputValidator.validate(response.getContent(), expectedSchema);
                     if (result.isSuccess()) {
+                        state.setStructuredOutput(result.getData());
                         state.stop(TerminationPolicy.REASON_FINISHED);
                         break;
                     }

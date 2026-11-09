@@ -15,6 +15,8 @@ import java.util.List;
 
 import static io.github.lyin.miniagent.model.ChatCompletionResponse.answer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructuredOutputTest {
@@ -48,6 +50,9 @@ class StructuredOutputTest {
         assertEquals("{\"result\":\"ok\",\"count\":42}",
                 state.getMessages().get(state.getMessages().size() - 1).getContent(),
                 "最终答案应是重试后那一份");
+        assertNotNull(state.getStructuredOutput(), "校验通过后应保存解析后的结构化结果");
+        assertEquals("ok", state.getStructuredOutput().get("result"));
+        assertEquals(42, state.getStructuredOutput().get("count"));
     }
 
     @Test
@@ -71,6 +76,7 @@ class StructuredOutputTest {
         AgentState state = loop.run("帮我查结果");
         assertEquals("output_invalid", state.getStopReason());
         assertEquals(2, llm.getTurn(), "maxRetries=1 表示首次失败后还能再试一次，模型应被调用两次");
+        assertNull(state.getStructuredOutput(), "校验失败用尽次数后不应有结构化结果");
     }
 
     /** 重试时回填给模型的纠正提示必须带上校验错误原文。 */
