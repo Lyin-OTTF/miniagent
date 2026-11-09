@@ -1,22 +1,29 @@
 package io.github.lyin.miniagent.model;
 
-public class FunctionCall {//定义最简单的"数据袋子"
+public class FunctionCall {
+    private final String id;
     private final String name;
-    private final String arguments;   //存原始字段
+    private final String arguments;
 
-    //写构造器
-    public FunctionCall(String name,String arguments){
-        this.name=name;
-        this.arguments=arguments;
+    public FunctionCall(String id, String name, String arguments) {
+        this.id = id;
+        this.name = name;
+        this.arguments = arguments;
     }
 
-    //写两个getter
-    public String getName (){
+    public FunctionCall(String name, String arguments) {
+        this(null, name, arguments);
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getName() {
         return name;
     }
-    public String getArguments(){
+
+    public String getArguments() {
         return arguments;
     }
-
-
 }

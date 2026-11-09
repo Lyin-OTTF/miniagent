@@ -1,6 +1,5 @@
 package io.github.lyin.miniagent.tool;
 
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,8 +54,13 @@ public class ToolRegistry {
         return tool;
     }
 
-    /** 按注册顺序返回全部工具，用于把工具清单序列化给模型。 */
-    public Collection<Tool> getAllTools() {
-        return tools.values();
+    /**
+     * 按注册顺序返回全部工具，用于序列化给模型。
+     *
+     * <p>返回不可变副本：工具清单一旦交给调用方，注册表的后续变更不应影响它，
+     * 否则同一轮对话里「问模型时用的工具清单」与「执行时查的工具表」可能不一致。</p>
+     */
+    public List<Tool> listTools() {
+        return List.copyOf(tools.values());
     }
 }

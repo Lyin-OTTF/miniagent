@@ -3,6 +3,7 @@ package io.github.lyin.miniagent.llm.mock;
 import io.github.lyin.miniagent.llm.LlmClient;
 import io.github.lyin.miniagent.model.ChatCompletionResponse;
 import io.github.lyin.miniagent.model.Message;
+import io.github.lyin.miniagent.tool.Tool;
 
 import java.util.List;
 
@@ -14,23 +15,21 @@ public class MockLlmClient implements LlmClient {
 
     private int turn = 0;
 
-    public MockLlmClient (List<ChatCompletionResponse> script){
+    public MockLlmClient(List<ChatCompletionResponse> script) {
         this.script = script;
     }
 
     @Override
-    public ChatCompletionResponse chat(List<Message> messages) {
+    public ChatCompletionResponse chat(List<Message> messages, List<Tool> tools) {
         if (turn >= script.size()) {
             return answer("脚本结束");
         }
         ChatCompletionResponse resp = script.get(turn);
         turn++;
         return resp;
-
     }
 
-
-    public int getTurn(){
+    public int getTurn() {
         return turn;
     }
 }

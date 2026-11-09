@@ -19,11 +19,11 @@ class MockLlmClientTest {
 
         MockLlmClient client = new MockLlmClient(List.of(第一轮, 第二轮));
 
-        ChatCompletionResponse r1 = client.chat(List.of());
+        ChatCompletionResponse r1 = client.chat(List.of(), List.of());
         assertTrue(r1.hasToolCall());
         assertEquals("query_order", r1.getToolCall().getName());
 
-        ChatCompletionResponse r2 = client.chat(List.of());
+        ChatCompletionResponse r2 = client.chat(List.of(), List.of());
         assertFalse(r2.hasToolCall());
         assertEquals("任务完成", r2.getContent());
     }
